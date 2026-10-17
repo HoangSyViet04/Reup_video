@@ -152,6 +152,35 @@ class MergeIntegrationTests(unittest.TestCase):
         crossings = sum(a <= 0 < b for a, b in zip(samples, samples[1:]))
         self.assertAlmostEqual(crossings / (len(samples) / 8000), 440, delta=5)
 
+    def test_portrait_canvas_preserves_full_scene_and_duration(self):
+        parts = self.make_parts('portrait', [])
+        logo = self.root / 'portrait-logo.png'
+        subprocess.run(['ffmpeg', '-hide_banner', '-loglevel', 'error', '-f', 'lavfi',
+                        '-i', 'color=c=red:s=32x16:rate=1', '-frames:v', '1', str(logo)], check=True)
+        output, report = nguonc.merge_episode(parts, self.root / 'portrait-out', 11, self.metadata,
+                                              skip_intro=1.1, logo=logo, speed=1.15, layout='portrait')
+        self.assertTrue(output.name.endswith('-9x16.mp4'))
+        video = next(s for s in report['probe']['streams'] if s['codec_type'] == 'video')
+        self.assertEqual((video['width'], video['height']), (1080, 1920))
+        self.assertAlmostEqual(float(report['probe']['format']['duration']), 6, delta=0.25)
+        self.assertEqual(report['processing']['canvas'], [1080, 1920])
+        # The red watermark remains inside the top-right of the fitted horizontal scene.
+        pixel = subprocess.run(['ffmpeg', '-v', 'error', '-ss', '0.5', '-i', str(output),
+                                '-vf', 'crop=2:2:912:710,format=rgb24', '-frames:v', '1',
+                                '-f', 'rawvideo', '-'], check=True, capture_output=True).stdout
+        self.assertGreater(pixel[0], 180)
+        self.assertLess(pixel[1], 100)
+        self.assertLess(pixel[2], 100)
+        # A decoded 1080-wide central scene must retain both extreme sides of the original.
+        frame = subprocess.run(['ffmpeg', '-v', 'error', '-ss', '0.5', '-i', str(output),
+                                '-vf', 'crop=1080:608:0:656,scale=320:180,format=rgb24',
+                                '-frames:v', '1', '-f', 'rawvideo', '-'],
+                               check=True, capture_output=True).stdout
+        left = frame[(90*320+2)*3:(90*320+2)*3+3]
+        right = frame[(90*320+317)*3:(90*320+317)*3+3]
+        self.assertTrue(all(value < 40 for value in left))
+        self.assertTrue(all(value > 210 for value in right))
+
     def test_invalid_speed(self):
         for speed in (0, -1, float('nan'), float('inf'), 3):
             with self.assertRaisesRegex(RuntimeError, 'Speed'):

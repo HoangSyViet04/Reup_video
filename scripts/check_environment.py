@@ -33,7 +33,7 @@ def main():
                 print(f'{name}: {tool}')
         except (OSError, subprocess.TimeoutExpired) as error:
             errors.append(f'{name}: {error}')
-    for name in ('bia_logo.jpg', 'tiem-phim-gio-com-watermark.png'):
+    for name in ('bia_new.jpg', 'tiem-phim-gio-com-watermark.png'):
         if not (root / 'assets/fanpage' / name).is_file():
             errors.append(f'Missing asset: assets/fanpage/{name}')
     fonts = (root / 'assets/fonts/DejaVuSans-Bold.ttf', Path('C:/Windows/Fonts/arialbd.ttf'),

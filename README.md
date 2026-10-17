@@ -59,13 +59,13 @@ Mặc định:
 4. Ghép các đoạn còn lại, bỏ qua đoạn lỗi và ghi rõ trong báo cáo.
 5. Chèn watermark vào góc trên bên phải, độ rộng canvas logo 18% chiều rộng
    video, độ đậm 85%, chừa mép theo kích thước video.
-6. Xuất H.264/AAC MP4, giữ kích thước video gốc, đặt metadata faststart.
+6. Xuất H.264/AAC MP4 khung dọc 1080×1920, giữ đủ cảnh phim ở giữa nền mờ, đặt metadata faststart.
    Tự dùng NVENC nếu probe GPU thành công, nếu không dùng libx264.
 
 File dùng để xem/đăng:
 
 ```text
-output/videos/tap-003/one-piece-ep-003-vi-nguonc-ready-1.15x.mp4
+output/videos/tap-003/one-piece-ep-003-vi-nguonc-ready-1.15x-9x16.mp4
 ```
 
 Bản chưa xử lý trước đây vẫn được giữ nguyên; pipeline mới dùng hậu tố `-ready`.
@@ -137,7 +137,7 @@ python scripts/download_nguonc.py --episode 2 --merge-only
 python scripts/download_nguonc.py --episode 3 --speed 1
 ```
 
-Default output: `output/videos/tap-003/one-piece-ep-003-vi-nguonc-ready-1.15x.mp4`.
+Default output: `output/videos/tap-003/one-piece-ep-003-vi-nguonc-ready-1.15x-9x16.mp4`.
 To change trim/logo settings for the same speed, move that output and its report aside first.
 
 
@@ -145,7 +145,7 @@ To change trim/logo settings for the same speed, move that output and its report
 
 Mỗi lần chạy thành công, pipeline tạo thêm ảnh bìa dọc 1080×1920:
 `output/videos/tap-003/one-piece-ep-003-cover.jpg` với chữ **TẬP 03**.
-Ảnh gốc `assets/fanpage/bia_logo.jpg` được giữ nguyên; toàn bộ ảnh được đặt ở giữa
+Ảnh gốc `assets/fanpage/bia_new.jpg` được giữ nguyên; toàn bộ ảnh được đặt ở giữa
 nền mờ, số tập trắng trên ô đen. Không chèn ảnh bìa vào video.
 Khi video đã có đúng cấu hình, chạy lại vẫn tạo/cập nhật bìa mà không encode video.
 
@@ -155,7 +155,7 @@ python scripts/download_nguonc.py --episode 3
 # Chỉ tạo bìa, không tải hoặc xuất video
 python scripts/download_nguonc.py --episode 2 --cover-only
 # Đổi ảnh nguồn hoặc bỏ qua bìa
-python scripts/download_nguonc.py --episode 3 --cover-image assets/fanpage/bia_logo.jpg
+python scripts/download_nguonc.py --episode 3 --cover-image assets/fanpage/bia_new.jpg
 python scripts/download_nguonc.py --episode 3 --no-cover
 ```
 
@@ -170,7 +170,7 @@ Mặc định sau khi hoàn tất, pipeline mở File Explorer tại thư mục 
 
 ```text
 output/videos/tap-003/
-  one-piece-ep-003-vi-nguonc-ready-1.15x.mp4
+  one-piece-ep-003-vi-nguonc-ready-1.15x-9x16.mp4
   one-piece-ep-003-cover.jpg
   one-piece-ep-003-vi-nguonc-ready-1.15x.report.json
 ```
@@ -188,3 +188,26 @@ File đang xuất `.working.mp4` không được chuyển. Nếu trùng tên, fi
 
 Lỗi xuất video/bìa không mở thư mục. Nếu File Explorer không mở được,
 pipeline chỉ cảnh báo; các file đã xuất vẫn được giữ nguyên.
+
+
+## Bìa mới và video dọc 9:16
+
+Mặc định dùng `assets/fanpage/bia_new.jpg`, giữ bố cục ảnh dọc và giảm chữ số tập
+từ 100 xuống 72 px. Bìa tạo lại cùng tên trong thư mục tập.
+
+Video mặc định 1080×1920 (9:16): giữ trọn khung cảnh phim gốc nằm giữa nền mờ,
+không kéo giãn hoặc cắt mất hai bên. Logo vẫn nằm góc phải của cảnh phim.
+Cắt intro 105 giây và tốc độ 1.15x vẫn giữ nguyên.
+File mới có hậu tố `-9x16.mp4`, không ghi đè bản ngang cũ.
+
+```powershell
+# Dùng cache để xuất lại tập đã tải thành bản dọc:
+.\run_download.cmd --episode 2 --merge-only
+# Chỉ làm lại bìa mới:
+.\run_download.cmd --episode 2 --cover-only
+# Xuất bản giữ nguyên khung hình gốc nếu cần:
+.\run_download.cmd --episode 2 --layout original
+```
+
+Khung dọc không đảm bảo bỏ được giới hạn 90 giây trong giao diện đăng Reel.
+Kiểm tra thời lượng trên màn hình đăng trước khi chia sẻ.
