@@ -1,0 +1,21 @@
+# Machine-specific environments
+.venv/
+.vendor/
+__pycache__/
+*.py[cod]
+# Generated media and temporary data
+output/
+cache/
+.test-work/
+archive/
+*.working.mp4
+*.part
+# Local secrets/configuration
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+cookies*.txt
+.DS_Store
+Thumbs.db
