@@ -59,13 +59,13 @@ Mặc định:
 4. Ghép các đoạn còn lại, bỏ qua đoạn lỗi và ghi rõ trong báo cáo.
 5. Chèn watermark vào góc trên bên phải, độ rộng canvas logo 18% chiều rộng
    video, độ đậm 85%, chừa mép theo kích thước video.
-6. Xuất H.264/AAC MP4 khung dọc 1080×1920, giữ đủ cảnh phim ở giữa nền mờ, đặt metadata faststart.
+6. Xuất H.264/AAC MP4 khung vuông 1080×1080, giữ đủ cảnh phim ở giữa nền mờ, đặt metadata faststart.
    Tự dùng NVENC nếu probe GPU thành công, nếu không dùng libx264.
 
 File dùng để xem/đăng:
 
 ```text
-output/videos/tap-003/one-piece-ep-003-vi-nguonc-ready-cut110s-1.15x-9x16.mp4
+output/videos/tap-003/one-piece-ep-003-vi-nguonc-ready-cut110s-1.15x-end70s-adj30-10-15-1x1.mp4
 ```
 
 Bản chưa xử lý trước đây vẫn được giữ nguyên; pipeline mới dùng hậu tố `-ready`.
@@ -137,7 +137,7 @@ python scripts/download_nguonc.py --episode 2 --merge-only
 python scripts/download_nguonc.py --episode 3 --speed 1
 ```
 
-Default output: `output/videos/tap-003/one-piece-ep-003-vi-nguonc-ready-cut110s-1.15x-9x16.mp4`.
+Default output: `output/videos/tap-003/one-piece-ep-003-vi-nguonc-ready-cut110s-1.15x-end70s-adj30-10-15-1x1.mp4`.
 To change trim/logo settings for the same speed, move that output and its report aside first.
 
 
@@ -170,7 +170,7 @@ Mặc định sau khi hoàn tất, pipeline mở File Explorer tại thư mục 
 
 ```text
 output/videos/tap-003/
-  one-piece-ep-003-vi-nguonc-ready-cut110s-1.15x-9x16.mp4
+  one-piece-ep-003-vi-nguonc-ready-cut110s-1.15x-end70s-adj30-10-15-1x1.mp4
   one-piece-ep-003-cover.jpg
   one-piece-ep-003-vi-nguonc-ready-1.15x.report.json
 ```
@@ -192,10 +192,10 @@ pipeline chỉ cảnh báo; các file đã xuất vẫn được giữ nguyên.
 
 ## Bìa mới và video dọc 9:16
 
-Mặc định dùng `assets/fanpage/bia_new.jpg`, giữ bố cục ảnh dọc và giảm chữ số tập
+Ảnh bìa mặc định dùng `assets/fanpage/bia_new.jpg`, giữ bố cục ảnh dọc và giảm chữ số tập
 từ 100 xuống 72 px. Bìa tạo lại cùng tên trong thư mục tập.
 
-Video mặc định 1080×1920 (9:16): giữ trọn khung cảnh phim gốc nằm giữa nền mờ,
+Chế độ `--layout portrait` xuất 1080×1920 (9:16): giữ trọn khung cảnh phim gốc nằm giữa nền mờ,
 không kéo giãn hoặc cắt mất hai bên. Logo vẫn nằm góc phải của cảnh phim.
 Cắt intro 110 giây và tốc độ 1.15x vẫn giữ nguyên.
 File mới có hậu tố `-9x16.mp4`, không ghi đè bản ngang cũ.
@@ -220,3 +220,30 @@ giữ nguyên bản cắt 105 giây cũ. Dùng cache để xuất lại mà khô
 ```powershell
 .\run_download.cmd --episode 2 --merge-only
 ```
+
+
+## Mặc định hiện tại: 1:1, chỉnh hình và cắt đuôi
+
+- Video vuông 1080×1080; giữ đầy đủ cảnh phim ở giữa nền mờ, logo góc phải cảnh phim.
+- Cắt 110 giây đầu và 70 giây cuối theo **timeline video gốc**, rồi mới tăng tốc 1.15x.
+  Segment nằm hoàn toàn ngoài phần giữ lại không được yêu cầu tải; đoạn giao mốc cắt
+  được tải rồi cắt chính xác cả hình/tiếng. Thiếu đoạn nội dung không làm dịch mốc cắt.
+- Sharpen +30 → FFmpeg `unsharp=5:5:0.30:5:5:0` (chỉ độ sáng).
+- Contrast +10 → FFmpeg contrast 1.10; Saturation +15 → saturation 1.15.
+  Đây là quy đổi của pipeline, không phải khẳng định giống hệt thang chỉnh của ứng dụng khác.
+  Áp dụng lên cảnh phim trước khi chèn logo, không tác động chữ/logo/ảnh bìa.
+- Tên file chứa `end70s-adj30-10-15-1x1`, không ghi đè bản cũ.
+- Ảnh bìa `bia_new.jpg` và chữ số tập nhỏ tiếp tục giữ bố cục dọc đã thiết lập.
+
+```powershell
+git pull
+.\run_download.cmd --episode 2 --merge-only
+# Tập mới (cần mạng và máy chủ nguồn hoạt động):
+.\run_download.cmd --episode 3
+# Không cắt đuôi hoặc không chỉnh màu/độ nét:
+.\run_download.cmd --episode 2 --skip-outro 0 --sharpen 0 --contrast 0 --saturation 0
+```
+
+Với tập gốc 1447.142 giây và không thiếu đoạn, thời lượng mới là
+`(1447.142 - 110 - 70) / 1.15 ≈ 1101.86 giây` (18 phút 22 giây).
+Khung vuông không đảm bảo bỏ giới hạn thời lượng của giao diện đăng Facebook.

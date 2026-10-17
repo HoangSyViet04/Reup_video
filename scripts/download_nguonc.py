@@ -91,20 +91,24 @@ def fetch_episode(number):
             'expected_segments': len(urls), 'playlist_sha256': hashlib.sha256(text.encode()).hexdigest()}
 
 
-def segment_plan(metadata, skip_intro=0):
+def segment_plan(metadata, skip_intro=0, skip_outro=0):
     durations = metadata.get('durations', [])
     count = metadata.get('expected_segments', len(durations))
-    if skip_intro and (len(durations) != count or not durations):
-        raise RuntimeError('Exact intro trimming requires cached playlist metadata. Run without --merge-only once.')
+    if any(not math.isfinite(value) or value < 0 for value in (skip_intro, skip_outro)):
+        raise RuntimeError('Intro and outro cuts must be finite and nonnegative.')
+    if (skip_intro or skip_outro) and (len(durations) != count or not durations):
+        raise RuntimeError('Exact trimming requires cached playlist metadata. Run without --merge-only once.')
     if durations and any(not math.isfinite(d) or d <= 0 for d in durations):
         raise RuntimeError('Invalid segment durations in playlist.')
     starts, position = [], 0.0
     for duration in durations:
         starts.append(position)
         position += duration
-    if skip_intro and skip_intro >= position:
-        raise RuntimeError('Intro cut is longer than the episode.')
-    selected = [i for i in range(count) if not durations or starts[i] + durations[i] > skip_intro + 1e-8]
+    if (skip_intro or skip_outro) and skip_intro + skip_outro >= position:
+        raise RuntimeError('Combined cuts are longer than or equal to the episode.')
+    content_end = position - skip_outro
+    selected = [i for i in range(count) if not durations or
+                (starts[i] + durations[i] > skip_intro + 1e-8 and starts[i] < content_end - 1e-8)]
     excluded = sorted(set(range(count)) - set(selected))
     return selected, excluded, starts
 
@@ -118,24 +122,40 @@ def choose_encoder(requested):
     return 'h264_nvenc' if check.returncode == 0 else 'libx264'
 
 
-def output_path(outdir, episode, skip_intro, logo, speed=1.0, layout='original'):
+def output_path(outdir, episode, skip_intro, logo, speed=1.0, layout='original',
+                skip_outro=0, adjustments=(0, 0, 0)):
     suffix = '-ready' if skip_intro or logo or speed != 1 else ''
     if skip_intro not in (0, 105):
         suffix += f'-cut{skip_intro:g}s'
     if speed != 1:
         suffix += f'-{speed:g}x'
-    if layout == 'portrait':
-        suffix += '-9x16'
+    if skip_outro:
+        suffix += f'-end{skip_outro:g}s'
+    if any(adjustments):
+        suffix += '-adj' + '-'.join(f'{value:g}' for value in adjustments)
+    if layout in ('portrait', 'square'):
+        suffix += '-9x16' if layout == 'portrait' else '-1x1'
     return outdir / f'one-piece-ep-{episode:03d}-vi-nguonc{suffix}.mp4'
 
 
-def processing_profile(skip_intro, logo, speed=1.0, layout='original'):
-    return {**({'layout': 'portrait', 'canvas': [1080, 1920], 'background': 'blur'} if layout == 'portrait' else {}),
-            'version': 5 if layout == 'portrait' else 4, 'skip_intro_seconds': skip_intro, 'speed': speed,
-            'logo_sha256': hashlib.sha256(Path(logo).read_bytes()).hexdigest() if logo else None,
-            'logo_position': 'top-right' if logo else None,
-            'logo_width_ratio': 0.18 if logo else None,
-            'logo_opacity': 0.85 if logo else None}
+def processing_profile(skip_intro, logo, speed=1.0, layout='original',
+                       skip_outro=0, adjustments=(0, 0, 0)):
+    profile = {'version': 5 if layout == 'portrait' else 4,
+               'skip_intro_seconds': skip_intro, 'speed': speed,
+               'logo_sha256': hashlib.sha256(Path(logo).read_bytes()).hexdigest() if logo else None,
+               'logo_position': 'top-right' if logo else None,
+               'logo_width_ratio': 0.18 if logo else None,
+               'logo_opacity': 0.85 if logo else None}
+    if layout in ('portrait', 'square'):
+        profile.update(layout=layout, canvas=[1080, 1920 if layout == 'portrait' else 1080], background='blur')
+    if skip_outro or any(adjustments) or layout == 'square':
+        sharpen, contrast, saturation = adjustments
+        profile.update(version=6, skip_outro_seconds=skip_outro,
+                       adjustments={'sharpen': sharpen, 'contrast': contrast, 'saturation': saturation,
+                                    'ffmpeg_unsharp_luma': sharpen / 100,
+                                    'ffmpeg_contrast': 1 + contrast / 100,
+                                    'ffmpeg_saturation': 1 + saturation / 100})
+    return profile
 
 
 def run_encoder(command, expected_duration):
@@ -213,9 +233,12 @@ def download_segments(parts, metadata, workers, indices=None):
 
 
 def merge_episode(parts, outdir, episode, metadata=None, strict=False,
-                  skip_intro=0, logo=None, encoder='libx264', speed=1.0, layout='original'):
-    if layout not in ('original', 'portrait'):
-        raise RuntimeError('Layout must be original or portrait.')
+                  skip_intro=0, logo=None, encoder='libx264', speed=1.0, layout='original',
+                  skip_outro=0, adjustments=(0, 0, 0)):
+    if layout not in ('original', 'portrait', 'square'):
+        raise RuntimeError('Layout must be original, portrait or square.')
+    if len(adjustments) != 3 or any(not math.isfinite(v) or not 0 <= v <= 100 for v in adjustments):
+        raise RuntimeError('Sharpen, contrast and saturation must be finite and between 0 and 100.')
     if not math.isfinite(speed) or not 0.5 <= speed <= 2:
         raise RuntimeError('Speed must be finite and between 0.5 and 2.')
     metadata = metadata or read_json(parts / 'metadata.json')
@@ -226,7 +249,7 @@ def merge_episode(parts, outdir, episode, metadata=None, strict=False,
         raise RuntimeError('No usable cached video segments found.')
     expected_count = metadata.get('expected_segments') or previous.get('expected_segments') or (max(actual) + 1)
     metadata = dict(metadata, expected_segments=expected_count)
-    selected, excluded, starts = segment_plan(metadata, skip_intro)
+    selected, excluded, starts = segment_plan(metadata, skip_intro, skip_outro)
     available = sorted(set(selected) & set(actual))
     missing = sorted(set(selected) - set(available))
     if not available:
@@ -239,7 +262,7 @@ def merge_episode(parts, outdir, episode, metadata=None, strict=False,
         logo = Path(logo).resolve()
         if not logo.is_file():
             raise RuntimeError(f'Logo not found: {logo}')
-    output = output_path(outdir, episode, skip_intro, logo, speed, layout)
+    output = output_path(outdir, episode, skip_intro, logo, speed, layout, skip_outro, adjustments)
     if output.exists():
         raise RuntimeError(f'Output already exists; not overwriting: {output}')
     outdir.mkdir(parents=True, exist_ok=True)
@@ -263,12 +286,15 @@ def merge_episode(parts, outdir, episode, metadata=None, strict=False,
     concat_file.write_text('\n'.join(concat_lines) + '\n', encoding='utf-8')
     staged = outdir / f'{output.stem}.{uuid.uuid4().hex}.working.mp4'
     residual_trim = max(0.0, skip_intro - starts[available[0]]) if known_durations else 0.0
-    print(f'Merging {len(available)}/{len(selected)} requested segments; intro excluded: {len(excluded)}; missing: {missing}', flush=True)
+    source_end = sum(durations) - skip_outro if known_durations else None
+    residual_tail = max(0.0, starts[available[-1]] + durations[available[-1]] - source_end) if known_durations else 0.0
+    retained = sum(durations[i] for i in available) - residual_trim - residual_tail if known_durations else None
+    print(f'Merging {len(available)}/{len(selected)} requested segments; trimmed segments excluded: {len(excluded)}; missing: {missing}', flush=True)
     command = ['ffmpeg', '-hide_banner', '-loglevel', 'error', '-n', '-f', 'concat', '-safe', '0', '-i', str(concat_file)]
-    needs_encode = bool(residual_trim or logo or speed != 1 or layout == 'portrait')
+    needs_encode = bool(residual_trim or residual_tail or logo or speed != 1 or layout != 'original' or any(adjustments))
     used_encoder = 'copy'
     video_rate = None
-    expected_output_duration = (sum(durations[i] for i in available) - residual_trim) / speed if known_durations else None
+    expected_output_duration = retained / speed if retained is not None else None
     if needs_encode:
         used_encoder = choose_encoder(encoder)
         source_probe = subprocess.run(['ffprobe', '-v', 'error', '-select_streams', 'v:0',
@@ -281,10 +307,14 @@ def merge_episode(parts, outdir, episode, metadata=None, strict=False,
         cap = max(650_000, min(12_000_000, int(source_bps * 0.90)))
         target_bps = min(cap, max(500_000, int(source_bps * 0.70)))
         video_rate = {'source_container_bps': source_bps, 'target_bps': target_bps, 'max_bps': cap}
-        print(f'Processing: intro={skip_intro}s, intra-segment trim={residual_trim:.6f}s, encoder={used_encoder}, speed={speed:g}x, layout={layout}, logo={logo}', flush=True)
+        print(f'Processing: intro={skip_intro}s, outro={skip_outro}s, intra-segment trim={residual_trim:.6f}s, encoder={used_encoder}, speed={speed:g}x, layout={layout}, logo={logo}', flush=True)
         print(f'Video bitrate: target {target_bps/1e6:.2f} Mb/s, cap {cap/1e6:.2f} Mb/s', flush=True)
-        filters = [f'[0:v]trim=start={residual_trim:.9f},setpts=(PTS-STARTPTS)/{speed:.12g}[base]',
-                   f'[0:a]atrim=start={residual_trim:.9f},asetpts=PTS-STARTPTS,atempo={speed:.12g}[a]']
+        trim_end = f':end={sum(durations[i] for i in available) - residual_tail:.9f}' if known_durations and skip_outro else ''
+        sharpen, contrast, saturation = adjustments
+        adjustment_filter = (f',eq=contrast={1 + contrast / 100:.6f}:saturation={1 + saturation / 100:.6f}'
+                             f',unsharp=5:5:{sharpen / 100:.6f}:5:5:0') if any(adjustments) else ''
+        filters = [f'[0:v]trim=start={residual_trim:.9f}{trim_end},setpts=(PTS-STARTPTS)/{speed:.12g}{adjustment_filter}[base]',
+                   f'[0:a]atrim=start={residual_trim:.9f}{trim_end},asetpts=PTS-STARTPTS,atempo={speed:.12g}[a]']
         if logo:
             dimensions = source_info['streams'][0]
             logo_width = max(32, round(dimensions['width'] * 0.18 / 2) * 2)
@@ -294,14 +324,16 @@ def merge_episode(parts, outdir, episode, metadata=None, strict=False,
                         f'[base][wm]overlay=x=main_w-overlay_w-{margin}:y={margin}:shortest=1,format=yuv420p[v]']
         else:
             filters += ['[base]format=yuv420p[v]']
-        if layout == 'portrait':
-            # Overlay the logo onto the scene before fitting the full scene to a portrait canvas.
+        if layout in ('portrait', 'square'):
+            # Keep the complete scene; only the blurred background is cropped to fill.
+            canvas_height = 1920 if layout == 'portrait' else 1080
+            blur_height = 480 if layout == 'portrait' else 270
             filters = [f.replace('[v]', '[scene]') for f in filters]
             filters += [
                 '[scene]split=2[bgsrc][fgsrc]',
-                '[bgsrc]scale=270:480:force_original_aspect_ratio=increase:force_divisible_by=2,'
-                'crop=270:480,setsar=1,gblur=sigma=10,eq=brightness=-0.12,scale=1080:1920[bg]',
-                '[fgsrc]scale=1080:1920:force_original_aspect_ratio=decrease:force_divisible_by=2,setsar=1[fg]',
+                f'[bgsrc]scale=270:{blur_height}:force_original_aspect_ratio=increase:force_divisible_by=2,'
+                f'crop=270:{blur_height},setsar=1,gblur=sigma=10,eq=brightness=-0.12,scale=1080:{canvas_height}[bg]',
+                f'[fgsrc]scale=1080:{canvas_height}:force_original_aspect_ratio=decrease:force_divisible_by=2,setsar=1[fg]',
                 '[bg][fg]overlay=x=(main_w-overlay_w)/2:y=(main_h-overlay_h)/2:shortest=1,format=yuv420p[v]']
         command += ['-filter_complex', ';'.join(filters), '-map', '[v]', '-map', '[a]', '-c:v', used_encoder]
         if used_encoder == 'h264_nvenc':
@@ -323,16 +355,17 @@ def merge_episode(parts, outdir, episode, metadata=None, strict=False,
     if not {'video', 'audio'}.issubset(types):
         raise RuntimeError('Output must contain both video and audio.')
     duration = float(technical['format']['duration'])
-    retained = sum(durations[i] for i in available) - residual_trim if known_durations else None
     if duration <= 0 or (retained is not None and abs(duration - retained / speed) > max(2, len(runs) * 0.5)):
         raise RuntimeError('Unexpected output duration; unverified file remains marked working.')
     report = {'source': 'NguonC', 'server': metadata.get('server', 'Long Tieng #1 (NC)'),
               'episode': episode, 'complete': not missing, 'expected_segments': expected_count,
               'requested_segments': len(selected), 'merged_segments': len(available), 'missing_segments': missing,
-              'intro_skipped_segments': excluded,
+              'intro_skipped_segments': [i for i in excluded if known_durations and starts[i] + durations[i] <= skip_intro + 1e-8],
+              'outro_skipped_segments': [i for i in excluded if known_durations and starts[i] >= source_end - 1e-8],
+              'source_content_end_seconds': source_end,
               'source_missing_segments': sorted(set(range(expected_count)) - set(actual)),
-              'missing_duration_seconds': round(sum(max(0, starts[i] + durations[i] - max(starts[i], skip_intro)) for i in missing), 3) if known_durations else None,
-              'processing': processing_profile(skip_intro, logo, speed, layout), 'encoder': used_encoder, 'video_bitrate': video_rate,
+              'missing_duration_seconds': round(sum(max(0, min(starts[i] + durations[i], source_end) - max(starts[i], skip_intro)) for i in missing), 3) if known_durations else None,
+              'processing': processing_profile(skip_intro, logo, speed, layout, skip_outro, adjustments), 'encoder': used_encoder, 'video_bitrate': video_rate,
               'expected_output_duration_seconds': round(expected_output_duration, 3) if expected_output_duration is not None else None,
               'retained_expected_duration_seconds': round(retained, 3) if retained is not None else None,
               'probe': technical, 'saved': str(output.resolve())}
@@ -456,11 +489,15 @@ def main():
     parser.add_argument('--strict', action='store_true', help='Require every segment; default skips unavailable segments')
     parser.add_argument('--workers', type=int, default=4)
     parser.add_argument('--skip-intro', type=float, default=110, help='Cut this many seconds from original episode; default 110 (1m50s)')
+    parser.add_argument('--skip-outro', type=float, default=70, help='Cut final seconds of original episode; default 70 (1m10s)')
+    parser.add_argument('--sharpen', type=float, default=30, help='0-100; default 30 maps to unsharp luma amount 0.30')
+    parser.add_argument('--contrast', type=float, default=10, help='0-100; default 10 maps to contrast 1.10')
+    parser.add_argument('--saturation', type=float, default=15, help='0-100; default 15 maps to saturation 1.15')
     parser.add_argument('--speed', type=float, default=1.15, help='Playback speed, 0.5 to 2; default 1.15; preserves audio pitch')
     parser.add_argument('--logo', type=Path, default=ROOT / 'assets/fanpage/tiem-phim-gio-com-watermark.png')
     parser.add_argument('--no-logo', action='store_true', help='Disable watermark')
-    parser.add_argument('--layout', choices=['portrait', 'original'], default='portrait',
-                        help='Default: portrait 1080x1920 with full scene centered over blurred background')
+    parser.add_argument('--layout', choices=['square', 'portrait', 'original'], default='square',
+                        help='Default: square 1080x1080 with full scene centered over blurred background')
     parser.add_argument('--encoder', choices=['auto', 'libx264', 'h264_nvenc'], default='auto')
     args = parser.parse_args()
     if args.episode < 1 or not 1 <= args.workers <= 8:
@@ -469,6 +506,11 @@ def main():
         parser.error('--skip-intro must be finite and nonnegative.')
     if not math.isfinite(args.speed) or not 0.5 <= args.speed <= 2:
         parser.error('--speed must be finite and between 0.5 and 2.')
+    if not math.isfinite(args.skip_outro) or args.skip_outro < 0:
+        parser.error('--skip-outro must be finite and nonnegative.')
+    adjustments = (args.sharpen, args.contrast, args.saturation)
+    if any(not math.isfinite(v) or not 0 <= v <= 100 for v in adjustments):
+        parser.error('Adjustment values must be finite and between 0 and 100.')
     outdir = episode_output_dir(args.episode)
     collect_legacy_outputs(args.episode, outdir)
 
@@ -492,10 +534,10 @@ def main():
         if not shutil.which(tool):
             raise RuntimeError(f'Missing dependency on PATH: {tool}')
     parts = ROOT / 'cache' / 'nguonc' / f'nc-ep-{args.episode:03d}-parts'
-    existing = output_path(outdir, args.episode, args.skip_intro, logo, args.speed, args.layout)
+    existing = output_path(outdir, args.episode, args.skip_intro, logo, args.speed, args.layout, args.skip_outro, adjustments)
     if existing.exists():
         report = read_json(existing.with_suffix('.report.json'))
-        if report.get('processing') != processing_profile(args.skip_intro, logo, args.speed, args.layout):
+        if report.get('processing') != processing_profile(args.skip_intro, logo, args.speed, args.layout, args.skip_outro, adjustments):
             raise RuntimeError('Existing output has different processing settings; move it aside before rerunning.')
         print(f'Already exists: {existing}', flush=True)
         if report.get('missing_segments'):
@@ -512,14 +554,14 @@ def main():
         if metadata and (metadata.get('source_embed') != fresh.get('source_embed') or metadata.get('durations') != fresh.get('durations')):
             raise RuntimeError('Source layout changed; refusing to mix cached segments with a different video.')
         metadata = fresh
-        selected, excluded, _ = segment_plan(metadata, args.skip_intro)
+        selected, excluded, _ = segment_plan(metadata, args.skip_intro, args.skip_outro)
         parts.mkdir(parents=True, exist_ok=True)
         write_json(parts / 'metadata.json', metadata)
         print(json.dumps({'source': 'NguonC', 'episode': args.episode,
-                          'segments_to_download': len(selected), 'intro_segments_not_requested': len(excluded),
-                          'skip_intro_seconds': args.skip_intro, 'skip_missing': not args.strict}), flush=True)
+                          'segments_to_download': len(selected), 'trimmed_segments_not_requested': len(excluded),
+                          'skip_intro_seconds': args.skip_intro, 'skip_outro_seconds': args.skip_outro, 'skip_missing': not args.strict}), flush=True)
         download_segments(parts, metadata, args.workers, selected)
-    merge_episode(parts, outdir, args.episode, metadata, args.strict, args.skip_intro, logo, args.encoder, args.speed, args.layout)
+    merge_episode(parts, outdir, args.episode, metadata, args.strict, args.skip_intro, logo, args.encoder, args.speed, args.layout, args.skip_outro, adjustments)
     if not args.no_cover:
         export_cover()
     finish()

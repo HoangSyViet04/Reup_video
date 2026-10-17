@@ -181,6 +181,76 @@ class MergeIntegrationTests(unittest.TestCase):
         self.assertTrue(all(value < 40 for value in left))
         self.assertTrue(all(value > 210 for value in right))
 
+    def test_square_adjustments_and_exact_tail_trim(self):
+        parts = self.make_parts('square-tail', [3])
+        logo = self.root / 'square-logo.png'
+        subprocess.run(['ffmpeg', '-v', 'error', '-f', 'lavfi', '-i', 'color=c=red:s=32x16:rate=1',
+                        '-frames:v', '1', str(logo)], check=True)
+        output, report = nguonc.merge_episode(parts, self.root / 'square-tail-out', 12, self.metadata,
+                                              strict=True, skip_intro=1.1, skip_outro=2.7, speed=1.15,
+                                              layout='square', adjustments=(30, 10, 15), logo=logo)
+        self.assertTrue(output.name.endswith('-1x1.mp4'))
+        video = next(s for s in report['probe']['streams'] if s['codec_type'] == 'video')
+        self.assertEqual((video['width'], video['height']), (1080, 1080))
+        self.assertAlmostEqual(float(report['probe']['format']['duration']), 4.2 / 1.15, delta=0.25)
+        self.assertEqual(report['outro_skipped_segments'], [3])
+        self.assertEqual(report['missing_segments'], [])
+        self.assertEqual(report['source_missing_segments'], [3])
+        self.assertEqual(report['retained_expected_duration_seconds'], 4.2)
+        self.assertEqual(report['processing']['adjustments']['ffmpeg_contrast'], 1.1)
+        self.assertEqual(report['processing']['adjustments']['ffmpeg_saturation'], 1.15)
+        self.assertEqual(report['processing']['adjustments']['ffmpeg_unsharp_luma'], 0.3)
+        probe = subprocess.run(['ffprobe', '-v', 'error', '-show_entries', 'stream=duration', '-of', 'json',
+                                str(output)], check=True, capture_output=True)
+        durations = [float(s['duration']) for s in json.loads(probe.stdout)['streams']]
+        self.assertLess(max(durations) - min(durations), 0.25)
+        pixel = subprocess.run(['ffmpeg', '-v', 'error', '-ss', '0.5', '-i', str(output),
+                                '-vf', 'crop=2:2:912:290,format=rgb24', '-frames:v', '1',
+                                '-f', 'rawvideo', '-'], check=True, capture_output=True).stdout
+        self.assertGreater(pixel[0], 180)
+        self.assertLess(pixel[1], 100)
+        self.assertLess(pixel[2], 100)
+
+    def test_tail_cut_does_not_remove_more_when_boundary_segment_missing(self):
+        parts = self.make_parts('missing-tail-boundary', [2])
+        _, report = nguonc.merge_episode(parts, self.root / 'missing-tail-boundary-out', 13, self.metadata,
+                                         skip_intro=1.1, skip_outro=2.7, speed=1.15)
+        self.assertEqual(report['missing_segments'], [2])
+        self.assertEqual(report['missing_duration_seconds'], 1.3)
+        self.assertAlmostEqual(float(report['probe']['format']['duration']), 2.9 / 1.15, delta=0.25)
+
+    def test_tail_trim_not_requested_from_server(self):
+        parts = self.make_parts('download-both-cuts', [0, 1, 2, 3])
+        metadata = dict(self.metadata, episode=14, source_embed='https://example.test/embed',
+                        urls=[f'https://example.test/{i}' for i in range(4)])
+        calls = []
+        fixture = self.fixture
+
+        class Session:
+            def __init__(self, **kwargs):
+                pass
+
+            def get(self, url, **kwargs):
+                index = int(url.rsplit('/', 1)[-1])
+                if index in (0, 3):
+                    raise AssertionError('Trimmed segment was requested')
+                calls.append(index)
+                return SimpleNamespace(status_code=200, content=(fixture / f'{index:05d}.ts').read_bytes(),
+                                       raise_for_status=lambda: None)
+
+        selected, excluded, _ = nguonc.segment_plan(metadata, 2.1, 2.1)
+        with mock.patch.dict('sys.modules', {'curl_cffi': SimpleNamespace(requests=SimpleNamespace(Session=Session))}):
+            nguonc.download_segments(parts, metadata, 1, selected)
+        self.assertEqual(sorted(calls), [1, 2])
+        self.assertEqual(excluded, [0, 3])
+
+    def test_invalid_or_excessive_tail_cuts_fail_before_encoding(self):
+        for outro in (-1, float('nan'), float('inf'), 8):
+            with self.assertRaises(RuntimeError):
+                nguonc.segment_plan(self.metadata, 1, outro)
+        with self.assertRaisesRegex(RuntimeError, 'metadata'):
+            nguonc.segment_plan({'expected_segments': 4}, 0, 1)
+
     def test_invalid_speed(self):
         for speed in (0, -1, float('nan'), float('inf'), 3):
             with self.assertRaisesRegex(RuntimeError, 'Speed'):
