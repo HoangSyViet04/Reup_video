@@ -9,6 +9,7 @@ import concurrent.futures
 import hashlib
 import json
 import math
+import os
 import re
 import shutil
 import subprocess
@@ -388,9 +389,48 @@ def create_episode_cover(episode, source, outdir, font_path=None):
     return output
 
 
+def episode_output_dir(episode):
+    return ROOT / 'output/videos' / f'tap-{episode:03d}'
+
+
+def collect_legacy_outputs(episode, destination):
+    """Move completed files from the former flat layout without overwriting."""
+    candidates = list((ROOT / 'output/videos').glob(f'one-piece-ep-{episode:03d}-vi-nguonc*.mp4'))
+    candidates = [p for p in candidates if not p.name.endswith('.working.mp4')]
+    cover = ROOT / 'output/covers' / f'one-piece-ep-{episode:03d}-cover.jpg'
+    if cover.is_file():
+        candidates.append(cover)
+    for old in candidates:
+        target = destination / old.name
+        old_report = old.with_suffix('.report.json') if old.suffix == '.mp4' else None
+        if target.exists() or (old_report and old_report.exists() and target.with_suffix('.report.json').exists()):
+            print(f'WARNING: legacy output kept because destination already exists: {old}', flush=True)
+            continue
+        destination.mkdir(parents=True, exist_ok=True)
+        old.rename(target)
+        if old_report and old_report.exists():
+            report = read_json(old_report)
+            report['saved'] = str(target.resolve())
+            write_json(old_report, report)
+            old_report.rename(target.with_suffix('.report.json'))
+        print(f'Collected existing output: {target}', flush=True)
+
+
+def open_output_folder(folder):
+    """Explorer failure must not turn a successful export into a failed job."""
+    if os.name != 'nt':
+        print(f'Output folder: {folder.resolve()}', flush=True)
+        return
+    try:
+        os.startfile(str(folder.resolve()))
+    except OSError as error:
+        print(f'WARNING: cannot open output folder: {error}. Folder: {folder.resolve()}', flush=True)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--episode', type=int, default=1)
+    parser.add_argument('--no-open', action='store_true', help='Do not open the episode output folder on completion')
     parser.add_argument('--cover-only', action='store_true', help='Create the numbered cover only; no network or video processing')
     parser.add_argument('--cover-image', type=Path, default=ROOT / 'assets/fanpage/bia_logo.jpg')
     parser.add_argument('--cover-font', type=Path, help='Optional bold font supporting Vietnamese')
@@ -410,13 +450,21 @@ def main():
         parser.error('--skip-intro must be finite and nonnegative.')
     if not math.isfinite(args.speed) or not 0.5 <= args.speed <= 2:
         parser.error('--speed must be finite and between 0.5 and 2.')
+    outdir = episode_output_dir(args.episode)
+    collect_legacy_outputs(args.episode, outdir)
+
+    def finish():
+        if not args.no_open:
+            open_output_folder(outdir)
+
     def export_cover():
-        return create_episode_cover(args.episode, args.cover_image, ROOT / 'output/covers', args.cover_font)
+        return create_episode_cover(args.episode, args.cover_image, outdir, args.cover_font)
 
     if args.cover_only:
         if args.no_cover:
             parser.error('--cover-only cannot be combined with --no-cover.')
         export_cover()
+        finish()
         return
     logo = None if args.no_logo else args.logo.resolve()
     if logo and not logo.is_file():
@@ -425,7 +473,6 @@ def main():
         if not shutil.which(tool):
             raise RuntimeError(f'Missing dependency on PATH: {tool}')
     parts = ROOT / 'cache' / 'nguonc' / f'nc-ep-{args.episode:03d}-parts'
-    outdir = ROOT / 'output' / 'videos'
     existing = output_path(outdir, args.episode, args.skip_intro, logo, args.speed)
     if existing.exists():
         report = read_json(existing.with_suffix('.report.json'))
@@ -438,6 +485,7 @@ def main():
                 raise RuntimeError('Existing video is incomplete; strict mode requires every segment.')
         if not args.no_cover:
             export_cover()
+        finish()
         return
     metadata = read_json(parts / 'metadata.json')
     if not args.merge_only:
@@ -455,6 +503,7 @@ def main():
     merge_episode(parts, outdir, args.episode, metadata, args.strict, args.skip_intro, logo, args.encoder, args.speed)
     if not args.no_cover:
         export_cover()
+    finish()
 
 
 if __name__ == '__main__':

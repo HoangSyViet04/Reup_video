@@ -5,7 +5,7 @@ Pipeline One Piece bản lồng tiếng **NguồnC / Lồng Tiếng #1 (NC)**.
 ```text
 scripts/          Code tải và xử lý
 assets/fanpage/    Avatar, ảnh bìa, watermark PNG
-output/videos/    MP4 hoàn thiện và báo cáo .report.json
+output/videos/    Thư mục tap-001, tap-002... chứa MP4, bìa JPG và báo cáo
 cache/nguonc/     Segment, playlist metadata, dữ liệu ghép
 tests/            Kiểm tra offline bằng video giả lập
 .vendor/          Thư viện Python cục bộ
@@ -65,7 +65,7 @@ Mặc định:
 File dùng để xem/đăng:
 
 ```text
-output/videos/one-piece-ep-003-vi-nguonc-ready-1.15x.mp4
+output/videos/tap-003/one-piece-ep-003-vi-nguonc-ready-1.15x.mp4
 ```
 
 Bản chưa xử lý trước đây vẫn được giữ nguyên; pipeline mới dùng hậu tố `-ready`.
@@ -137,14 +137,14 @@ python scripts/download_nguonc.py --episode 2 --merge-only
 python scripts/download_nguonc.py --episode 3 --speed 1
 ```
 
-Default output: `output/videos/one-piece-ep-003-vi-nguonc-ready-1.15x.mp4`.
+Default output: `output/videos/tap-003/one-piece-ep-003-vi-nguonc-ready-1.15x.mp4`.
 To change trim/logo settings for the same speed, move that output and its report aside first.
 
 
 ## Ảnh bìa đánh số tự động
 
 Mỗi lần chạy thành công, pipeline tạo thêm ảnh bìa dọc 1080×1920:
-`output/covers/one-piece-ep-003-cover.jpg` với chữ **TẬP 03**.
+`output/videos/tap-003/one-piece-ep-003-cover.jpg` với chữ **TẬP 03**.
 Ảnh gốc `assets/fanpage/bia_logo.jpg` được giữ nguyên; toàn bộ ảnh được đặt ở giữa
 nền mờ, số tập trắng trên ô đen. Không chèn ảnh bìa vào video.
 Khi video đã có đúng cấu hình, chạy lại vẫn tạo/cập nhật bìa mà không encode video.
@@ -162,3 +162,29 @@ python scripts/download_nguonc.py --episode 3 --no-cover
 Khi đăng Reel, chọn JPG này nếu giao diện có tùy chọn tải ảnh bìa riêng.
 Nếu tạo bìa lỗi sau khi xuất video, MP4 đã hoàn thành vẫn được giữ lại;
 sửa ảnh/font/thư viện rồi chạy `--cover-only` để tạo lại.
+
+
+## Gom output theo tập và tự mở thư mục
+
+Mặc định sau khi hoàn tất, pipeline mở File Explorer tại thư mục của tập:
+
+```text
+output/videos/tap-003/
+  one-piece-ep-003-vi-nguonc-ready-1.15x.mp4
+  one-piece-ep-003-cover.jpg
+  one-piece-ep-003-vi-nguonc-ready-1.15x.report.json
+```
+
+Video và bìa ở cùng một nơi để kéo thả đăng. `--cover-only` cũng lưu tại đây.
+Khi chạy lại tập đã xuất, các file hoàn thiện trong cấu trúc cũ được chuyển sang
+thư mục tập nếu không trùng file; không tải/encode lại chỉ vì đổi đường dẫn.
+File đang xuất `.working.mp4` không được chuyển. Nếu trùng tên, file cũ được giữ và có cảnh báo.
+
+```powershell
+.\run_download.cmd --episode 3
+# Không mở cửa sổ (chạy batch/tự động):
+.\run_download.cmd --episode 3 --no-open
+```
+
+Lỗi xuất video/bìa không mở thư mục. Nếu File Explorer không mở được,
+pipeline chỉ cảnh báo; các file đã xuất vẫn được giữ nguyên.
