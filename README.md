@@ -53,9 +53,9 @@ Mặc định:
 
 1. Tìm đúng NguồnC / Lồng Tiếng #1.
 2. Đọc thời lượng từng segment và không yêu cầu các segment nằm hoàn toàn trong
-   105 giây đầu. Segment 0 sẽ không bị yêu cầu khi nó thuộc phần intro.
-3. Giữ segment giao với mốc 1:45, cắt chính xác phần dư khi xuất video. Mốc cắt
-   được tính trên timeline tập gốc, không trừ tiếp 105 giây từ bản đã mất intro.
+   110 giây đầu. Segment 0 sẽ không bị yêu cầu khi nó thuộc phần intro.
+3. Giữ segment giao với mốc 1:50, cắt chính xác phần dư khi xuất video. Mốc cắt
+   được tính trên timeline tập gốc, không trừ tiếp 110 giây từ bản đã mất intro.
 4. Ghép các đoạn còn lại, bỏ qua đoạn lỗi và ghi rõ trong báo cáo.
 5. Chèn watermark vào góc trên bên phải, độ rộng canvas logo 18% chiều rộng
    video, độ đậm 85%, chừa mép theo kích thước video.
@@ -65,7 +65,7 @@ Mặc định:
 File dùng để xem/đăng:
 
 ```text
-output/videos/tap-003/one-piece-ep-003-vi-nguonc-ready-1.15x-9x16.mp4
+output/videos/tap-003/one-piece-ep-003-vi-nguonc-ready-cut110s-1.15x-9x16.mp4
 ```
 
 Bản chưa xử lý trước đây vẫn được giữ nguyên; pipeline mới dùng hậu tố `-ready`.
@@ -80,7 +80,7 @@ Trong lúc xuất sẽ hiển thị tiến độ theo phần trăm.
 python scripts/download_nguonc.py --episode 3 --merge-only
 ```
 
-Cần `cache/nguonc/nc-ep-003-parts/metadata.json` để cắt đúng 105 giây. Nếu cache
+Cần `cache/nguonc/nc-ep-003-parts/metadata.json` để cắt đúng 110 giây. Nếu cache
 cũ chưa có file này, chạy lệnh thường một lần: pipeline lấy playlist mới rồi
 tận dụng các segment đã có, không tải lại các segment hợp lệ.
 
@@ -125,7 +125,7 @@ Pipeline không tự đổi server hoặc xử lý CAPTCHA/DRM.
 
 ## Default speed: 1.15x
 
-The CLI now exports at 1.15x by default, after cutting the original 105-second intro.
+The CLI now exports at 1.15x by default, after cutting the original 110-second intro.
 Video and audio are sped up together; audio pitch is preserved with FFmpeg atempo.
 The watermark is applied in the same encode pass. Existing 1x videos remain untouched.
 
@@ -137,7 +137,7 @@ python scripts/download_nguonc.py --episode 2 --merge-only
 python scripts/download_nguonc.py --episode 3 --speed 1
 ```
 
-Default output: `output/videos/tap-003/one-piece-ep-003-vi-nguonc-ready-1.15x-9x16.mp4`.
+Default output: `output/videos/tap-003/one-piece-ep-003-vi-nguonc-ready-cut110s-1.15x-9x16.mp4`.
 To change trim/logo settings for the same speed, move that output and its report aside first.
 
 
@@ -170,7 +170,7 @@ Mặc định sau khi hoàn tất, pipeline mở File Explorer tại thư mục 
 
 ```text
 output/videos/tap-003/
-  one-piece-ep-003-vi-nguonc-ready-1.15x-9x16.mp4
+  one-piece-ep-003-vi-nguonc-ready-cut110s-1.15x-9x16.mp4
   one-piece-ep-003-cover.jpg
   one-piece-ep-003-vi-nguonc-ready-1.15x.report.json
 ```
@@ -197,7 +197,7 @@ từ 100 xuống 72 px. Bìa tạo lại cùng tên trong thư mục tập.
 
 Video mặc định 1080×1920 (9:16): giữ trọn khung cảnh phim gốc nằm giữa nền mờ,
 không kéo giãn hoặc cắt mất hai bên. Logo vẫn nằm góc phải của cảnh phim.
-Cắt intro 105 giây và tốc độ 1.15x vẫn giữ nguyên.
+Cắt intro 110 giây và tốc độ 1.15x vẫn giữ nguyên.
 File mới có hậu tố `-9x16.mp4`, không ghi đè bản ngang cũ.
 
 ```powershell
@@ -211,3 +211,12 @@ File mới có hậu tố `-9x16.mp4`, không ghi đè bản ngang cũ.
 
 Khung dọc không đảm bảo bỏ được giới hạn 90 giây trong giao diện đăng Reel.
 Kiểm tra thời lượng trên màn hình đăng trước khi chia sẻ.
+
+
+Mặc định bỏ **110 giây đầu (1:50)** trên timeline video gốc, tăng thêm 5 giây so với bản trước.
+Các segment hoàn toàn trước mốc này không được tải. File mới có `-cut110s` trong tên,
+giữ nguyên bản cắt 105 giây cũ. Dùng cache để xuất lại mà không tải segment mới:
+
+```powershell
+.\run_download.cmd --episode 2 --merge-only
+```

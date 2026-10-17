@@ -39,11 +39,11 @@ class CoverTests(unittest.TestCase):
     def test_existing_video_still_creates_cover_without_merge(self):
         with tempfile.TemporaryDirectory() as folder:
             root = Path(folder)
-            video = pipeline.output_path(root / 'output/videos/tap-002', 2, 105, None, 1.15, 'portrait')
+            video = pipeline.output_path(root / 'output/videos/tap-002', 2, 110, None, 1.15, 'portrait')
             video.parent.mkdir(parents=True)
             video.write_bytes(b'untouched existing video')
             video.with_suffix('.report.json').write_text(json.dumps({
-                'processing': pipeline.processing_profile(105, None, 1.15, 'portrait')}))
+                'processing': pipeline.processing_profile(110, None, 1.15, 'portrait')}))
             with mock.patch.object(pipeline, 'ROOT', root), \
                  mock.patch.object(sys, 'argv', ['pipeline', '--episode', '2', '--no-logo', '--no-open']), \
                  mock.patch.object(pipeline.shutil, 'which', return_value='available'), \

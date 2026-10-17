@@ -120,6 +120,8 @@ def choose_encoder(requested):
 
 def output_path(outdir, episode, skip_intro, logo, speed=1.0, layout='original'):
     suffix = '-ready' if skip_intro or logo or speed != 1 else ''
+    if skip_intro not in (0, 105):
+        suffix += f'-cut{skip_intro:g}s'
     if speed != 1:
         suffix += f'-{speed:g}x'
     if layout == 'portrait':
@@ -453,7 +455,7 @@ def main():
     parser.add_argument('--merge-only', action='store_true', help='Merge cached segments without any network requests')
     parser.add_argument('--strict', action='store_true', help='Require every segment; default skips unavailable segments')
     parser.add_argument('--workers', type=int, default=4)
-    parser.add_argument('--skip-intro', type=float, default=105, help='Cut this many seconds from original episode; default 105')
+    parser.add_argument('--skip-intro', type=float, default=110, help='Cut this many seconds from original episode; default 110 (1m50s)')
     parser.add_argument('--speed', type=float, default=1.15, help='Playback speed, 0.5 to 2; default 1.15; preserves audio pitch')
     parser.add_argument('--logo', type=Path, default=ROOT / 'assets/fanpage/tiem-phim-gio-com-watermark.png')
     parser.add_argument('--no-logo', action='store_true', help='Disable watermark')
