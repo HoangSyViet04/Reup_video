@@ -65,7 +65,7 @@ Mặc định:
 File dùng để xem/đăng:
 
 ```text
-output/videos/tap-003/one-piece-ep-003-vi-nguonc-ready-cut110s-1.15x-end70s-adj30-10-15-1x1.mp4
+output/videos/tap-003/one-piece-ep-003-vi-nguonc-ready-cut110s-1.15x-end75s-adj30-10-15-1x1.mp4
 ```
 
 Bản chưa xử lý trước đây vẫn được giữ nguyên; pipeline mới dùng hậu tố `-ready`.
@@ -137,7 +137,7 @@ python scripts/download_nguonc.py --episode 2 --merge-only
 python scripts/download_nguonc.py --episode 3 --speed 1
 ```
 
-Default output: `output/videos/tap-003/one-piece-ep-003-vi-nguonc-ready-cut110s-1.15x-end70s-adj30-10-15-1x1.mp4`.
+Default output: `output/videos/tap-003/one-piece-ep-003-vi-nguonc-ready-cut110s-1.15x-end75s-adj30-10-15-1x1.mp4`.
 To change trim/logo settings for the same speed, move that output and its report aside first.
 
 
@@ -170,7 +170,7 @@ Mặc định sau khi hoàn tất, pipeline mở File Explorer tại thư mục 
 
 ```text
 output/videos/tap-003/
-  one-piece-ep-003-vi-nguonc-ready-cut110s-1.15x-end70s-adj30-10-15-1x1.mp4
+  one-piece-ep-003-vi-nguonc-ready-cut110s-1.15x-end75s-adj30-10-15-1x1.mp4
   one-piece-ep-003-cover.jpg
   one-piece-ep-003-vi-nguonc-ready-1.15x.report.json
 ```
@@ -232,7 +232,7 @@ giữ nguyên bản cắt 105 giây cũ. Dùng cache để xuất lại mà khô
 - Contrast +10 → FFmpeg contrast 1.10; Saturation +15 → saturation 1.15.
   Đây là quy đổi của pipeline, không phải khẳng định giống hệt thang chỉnh của ứng dụng khác.
   Áp dụng lên cảnh phim trước khi chèn logo, không tác động chữ/logo/ảnh bìa.
-- Tên file chứa `end70s-adj30-10-15-1x1`, không ghi đè bản cũ.
+- Tên file chứa `end75s-adj30-10-15-1x1`, không ghi đè bản cũ.
 - Ảnh bìa `bia_new.jpg` và chữ số tập nhỏ tiếp tục giữ bố cục dọc đã thiết lập.
 
 ```powershell
@@ -245,5 +245,5 @@ git pull
 ```
 
 Với tập gốc 1447.142 giây và không thiếu đoạn, thời lượng mới là
-`(1447.142 - 110 - 70) / 1.15 ≈ 1101.86 giây` (18 phút 22 giây).
+`(1447.142 - 110 - 75) / 1.15 ≈ 1101.86 giây` (18 phút 22 giây).
 Khung vuông không đảm bảo bỏ giới hạn thời lượng của giao diện đăng Facebook.

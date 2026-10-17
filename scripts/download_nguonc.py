@@ -489,7 +489,7 @@ def main():
     parser.add_argument('--strict', action='store_true', help='Require every segment; default skips unavailable segments')
     parser.add_argument('--workers', type=int, default=4)
     parser.add_argument('--skip-intro', type=float, default=110, help='Cut this many seconds from original episode; default 110 (1m50s)')
-    parser.add_argument('--skip-outro', type=float, default=70, help='Cut final seconds of original episode; default 70 (1m10s)')
+    parser.add_argument('--skip-outro', type=float, default=75, help='Cut final seconds of original episode; default 75 (1m15s)')
     parser.add_argument('--sharpen', type=float, default=30, help='0-100; default 30 maps to unsharp luma amount 0.30')
     parser.add_argument('--contrast', type=float, default=10, help='0-100; default 10 maps to contrast 1.10')
     parser.add_argument('--saturation', type=float, default=15, help='0-100; default 15 maps to saturation 1.15')
