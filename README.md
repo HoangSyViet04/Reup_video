@@ -59,13 +59,13 @@ Mặc định:
 4. Ghép các đoạn còn lại, bỏ qua đoạn lỗi và ghi rõ trong báo cáo.
 5. Chèn watermark vào góc trên bên phải, độ rộng canvas logo 18% chiều rộng
    video, độ đậm 85%, chừa mép theo kích thước video.
-6. Xuất H.264/AAC MP4 khung vuông 1080×1080, giữ đủ cảnh phim ở giữa nền mờ, đặt metadata faststart.
+6. Xuất H.264/AAC MP4 khung vuông 1080×1080, giữ đủ cảnh phim ở giữa nền đen, đặt metadata faststart.
    Tự dùng NVENC nếu probe GPU thành công, nếu không dùng libx264.
 
 File dùng để xem/đăng:
 
 ```text
-output/videos/tap-003/one-piece-ep-003-vi-nguonc-ready-cut110s-1.15x-end75s-adj30-10-15-1x1.mp4
+output/videos/tap-003/one-piece-ep-003-vi-nguonc-ready-cut110s-1.15x-end75s-adj30-10-15-black-1x1.mp4
 ```
 
 Bản chưa xử lý trước đây vẫn được giữ nguyên; pipeline mới dùng hậu tố `-ready`.
@@ -137,7 +137,7 @@ python scripts/download_nguonc.py --episode 2 --merge-only
 python scripts/download_nguonc.py --episode 3 --speed 1
 ```
 
-Default output: `output/videos/tap-003/one-piece-ep-003-vi-nguonc-ready-cut110s-1.15x-end75s-adj30-10-15-1x1.mp4`.
+Default output: `output/videos/tap-003/one-piece-ep-003-vi-nguonc-ready-cut110s-1.15x-end75s-adj30-10-15-black-1x1.mp4`.
 To change trim/logo settings for the same speed, move that output and its report aside first.
 
 
@@ -170,7 +170,7 @@ Mặc định sau khi hoàn tất, pipeline mở File Explorer tại thư mục 
 
 ```text
 output/videos/tap-003/
-  one-piece-ep-003-vi-nguonc-ready-cut110s-1.15x-end75s-adj30-10-15-1x1.mp4
+  one-piece-ep-003-vi-nguonc-ready-cut110s-1.15x-end75s-adj30-10-15-black-1x1.mp4
   one-piece-ep-003-cover.jpg
   one-piece-ep-003-vi-nguonc-ready-1.15x.report.json
 ```
@@ -224,7 +224,7 @@ giữ nguyên bản cắt 105 giây cũ. Dùng cache để xuất lại mà khô
 
 ## Mặc định hiện tại: 1:1, chỉnh hình và cắt đuôi
 
-- Video vuông 1080×1080; giữ đầy đủ cảnh phim ở giữa nền mờ, logo góc phải cảnh phim.
+- Video vuông 1080×1080; giữ đầy đủ cảnh phim ở giữa nền đen, logo góc phải cảnh phim.
 - Cắt 110 giây đầu và 70 giây cuối theo **timeline video gốc**, rồi mới tăng tốc 1.15x.
   Segment nằm hoàn toàn ngoài phần giữ lại không được yêu cầu tải; đoạn giao mốc cắt
   được tải rồi cắt chính xác cả hình/tiếng. Thiếu đoạn nội dung không làm dịch mốc cắt.
@@ -247,3 +247,23 @@ git pull
 Với tập gốc 1447.142 giây và không thiếu đoạn, thời lượng mới là
 `(1447.142 - 110 - 75) / 1.15 ≈ 1101.86 giây` (18 phút 22 giây).
 Khung vuông không đảm bảo bỏ giới hạn thời lượng của giao diện đăng Facebook.
+
+
+## Nền đen thay cho nền mờ (mặc định mới)
+
+Video vuông vẫn giữ 1080×1080, cảnh phim ngang được đặt giữa, hai phần trống trên/dưới
+được tô đen. Pipeline không tạo bản sao phóng to/làm mờ cho nền. Không ảnh hưởng bìa JPG.
+Tên MP4 mới chứa `-black-1x1`, báo cáo ghi `background: black`, giữ nguyên bản nền mờ cũ.
+
+```powershell
+# Tạo lại tập đã tải, dùng cache và không truy cập nguồn:
+.\run_download.cmd --episode 18 --merge-only
+# Muốn dùng lại nền mờ cũ:
+.\run_download.cmd --episode 18 --merge-only --background blur
+```
+
+Chẩn đoán 2026-10-25: MP4 tập 18 hiện có giải mã 35 giây đầu không báo lỗi;
+ảnh trích ở 0.2, 2, 6, 12, 20 và 30 giây không tái hiện được hiện tượng mờ rồi nét lại.
+Chưa xác định nguyên nhân khi phát trên Facebook; không cam kết thay nền sẽ sửa lỗi phát.
+Nếu MP4 trên máy rõ nhưng Facebook mờ lúc mới phát, kiểm tra chất lượng phát và mạng,
+vì Facebook sử dụng nhiều mức chất lượng video và chọn theo điều kiện phát.

@@ -123,7 +123,7 @@ def choose_encoder(requested):
 
 
 def output_path(outdir, episode, skip_intro, logo, speed=1.0, layout='original',
-                skip_outro=0, adjustments=(0, 0, 0)):
+                skip_outro=0, adjustments=(0, 0, 0), background='black'):
     suffix = '-ready' if skip_intro or logo or speed != 1 else ''
     if skip_intro not in (0, 105):
         suffix += f'-cut{skip_intro:g}s'
@@ -134,12 +134,14 @@ def output_path(outdir, episode, skip_intro, logo, speed=1.0, layout='original',
     if any(adjustments):
         suffix += '-adj' + '-'.join(f'{value:g}' for value in adjustments)
     if layout in ('portrait', 'square'):
+        if background == 'black':
+            suffix += '-black'
         suffix += '-9x16' if layout == 'portrait' else '-1x1'
     return outdir / f'one-piece-ep-{episode:03d}-vi-nguonc{suffix}.mp4'
 
 
 def processing_profile(skip_intro, logo, speed=1.0, layout='original',
-                       skip_outro=0, adjustments=(0, 0, 0)):
+                       skip_outro=0, adjustments=(0, 0, 0), background='black'):
     profile = {'version': 5 if layout == 'portrait' else 4,
                'skip_intro_seconds': skip_intro, 'speed': speed,
                'logo_sha256': hashlib.sha256(Path(logo).read_bytes()).hexdigest() if logo else None,
@@ -147,10 +149,12 @@ def processing_profile(skip_intro, logo, speed=1.0, layout='original',
                'logo_width_ratio': 0.18 if logo else None,
                'logo_opacity': 0.85 if logo else None}
     if layout in ('portrait', 'square'):
-        profile.update(layout=layout, canvas=[1080, 1920 if layout == 'portrait' else 1080], background='blur')
+        profile.update(layout=layout, canvas=[1080, 1920 if layout == 'portrait' else 1080], background=background)
+        if background == 'black':
+            profile['version'] = 7
     if skip_outro or any(adjustments) or layout == 'square':
         sharpen, contrast, saturation = adjustments
-        profile.update(version=6, skip_outro_seconds=skip_outro,
+        profile.update(version=7 if layout != 'original' and background == 'black' else 6, skip_outro_seconds=skip_outro,
                        adjustments={'sharpen': sharpen, 'contrast': contrast, 'saturation': saturation,
                                     'ffmpeg_unsharp_luma': sharpen / 100,
                                     'ffmpeg_contrast': 1 + contrast / 100,
@@ -234,7 +238,9 @@ def download_segments(parts, metadata, workers, indices=None):
 
 def merge_episode(parts, outdir, episode, metadata=None, strict=False,
                   skip_intro=0, logo=None, encoder='libx264', speed=1.0, layout='original',
-                  skip_outro=0, adjustments=(0, 0, 0)):
+                  skip_outro=0, adjustments=(0, 0, 0), background='black'):
+    if background not in ('black', 'blur'):
+        raise RuntimeError('Background must be black or blur.')
     if layout not in ('original', 'portrait', 'square'):
         raise RuntimeError('Layout must be original, portrait or square.')
     if len(adjustments) != 3 or any(not math.isfinite(v) or not 0 <= v <= 100 for v in adjustments):
@@ -262,7 +268,7 @@ def merge_episode(parts, outdir, episode, metadata=None, strict=False,
         logo = Path(logo).resolve()
         if not logo.is_file():
             raise RuntimeError(f'Logo not found: {logo}')
-    output = output_path(outdir, episode, skip_intro, logo, speed, layout, skip_outro, adjustments)
+    output = output_path(outdir, episode, skip_intro, logo, speed, layout, skip_outro, adjustments, background)
     if output.exists():
         raise RuntimeError(f'Output already exists; not overwriting: {output}')
     outdir.mkdir(parents=True, exist_ok=True)
@@ -325,16 +331,21 @@ def merge_episode(parts, outdir, episode, metadata=None, strict=False,
         else:
             filters += ['[base]format=yuv420p[v]']
         if layout in ('portrait', 'square'):
-            # Keep the complete scene; only the blurred background is cropped to fill.
             canvas_height = 1920 if layout == 'portrait' else 1080
-            blur_height = 480 if layout == 'portrait' else 270
             filters = [f.replace('[v]', '[scene]') for f in filters]
-            filters += [
-                '[scene]split=2[bgsrc][fgsrc]',
-                f'[bgsrc]scale=270:{blur_height}:force_original_aspect_ratio=increase:force_divisible_by=2,'
-                f'crop=270:{blur_height},setsar=1,gblur=sigma=10,eq=brightness=-0.12,scale=1080:{canvas_height}[bg]',
-                f'[fgsrc]scale=1080:{canvas_height}:force_original_aspect_ratio=decrease:force_divisible_by=2,setsar=1[fg]',
-                '[bg][fg]overlay=x=(main_w-overlay_w)/2:y=(main_h-overlay_h)/2:shortest=1,format=yuv420p[v]']
+            if background == 'black':
+                # Fit the complete picture, then add black bars. No background blur/duplicate stream.
+                filters += [f'[scene]scale=1080:{canvas_height}:force_original_aspect_ratio=decrease:'
+                            f'force_divisible_by=2,pad=1080:{canvas_height}:(ow-iw)/2:(oh-ih)/2:'
+                            'color=black,setsar=1,format=yuv420p[v]']
+            else:
+                blur_height = 480 if layout == 'portrait' else 270
+                filters += [
+                    '[scene]split=2[bgsrc][fgsrc]',
+                    f'[bgsrc]scale=270:{blur_height}:force_original_aspect_ratio=increase:force_divisible_by=2,'
+                    f'crop=270:{blur_height},setsar=1,gblur=sigma=10,eq=brightness=-0.12,scale=1080:{canvas_height}[bg]',
+                    f'[fgsrc]scale=1080:{canvas_height}:force_original_aspect_ratio=decrease:force_divisible_by=2,setsar=1[fg]',
+                    '[bg][fg]overlay=x=(main_w-overlay_w)/2:y=(main_h-overlay_h)/2:shortest=1,format=yuv420p[v]']
         command += ['-filter_complex', ';'.join(filters), '-map', '[v]', '-map', '[a]', '-c:v', used_encoder]
         if used_encoder == 'h264_nvenc':
             command += ['-preset', 'p5', '-tune', 'hq', '-rc', 'vbr', '-cq', '22',
@@ -365,7 +376,7 @@ def merge_episode(parts, outdir, episode, metadata=None, strict=False,
               'source_content_end_seconds': source_end,
               'source_missing_segments': sorted(set(range(expected_count)) - set(actual)),
               'missing_duration_seconds': round(sum(max(0, min(starts[i] + durations[i], source_end) - max(starts[i], skip_intro)) for i in missing), 3) if known_durations else None,
-              'processing': processing_profile(skip_intro, logo, speed, layout, skip_outro, adjustments), 'encoder': used_encoder, 'video_bitrate': video_rate,
+              'processing': processing_profile(skip_intro, logo, speed, layout, skip_outro, adjustments, background), 'encoder': used_encoder, 'video_bitrate': video_rate,
               'expected_output_duration_seconds': round(expected_output_duration, 3) if expected_output_duration is not None else None,
               'retained_expected_duration_seconds': round(retained, 3) if retained is not None else None,
               'probe': technical, 'saved': str(output.resolve())}
@@ -496,8 +507,10 @@ def main():
     parser.add_argument('--speed', type=float, default=1.15, help='Playback speed, 0.5 to 2; default 1.15; preserves audio pitch')
     parser.add_argument('--logo', type=Path, default=ROOT / 'assets/fanpage/tiem-phim-gio-com-watermark.png')
     parser.add_argument('--no-logo', action='store_true', help='Disable watermark')
+    parser.add_argument('--background', choices=['black', 'blur'], default='black',
+                        help='Default black padding above/below fitted video; blur is optional')
     parser.add_argument('--layout', choices=['square', 'portrait', 'original'], default='square',
-                        help='Default: square 1080x1080 with full scene centered over blurred background')
+                        help='Default: square 1080x1080 with full scene centered on a black background')
     parser.add_argument('--encoder', choices=['auto', 'libx264', 'h264_nvenc'], default='auto')
     args = parser.parse_args()
     if args.episode < 1 or not 1 <= args.workers <= 8:
@@ -534,10 +547,10 @@ def main():
         if not shutil.which(tool):
             raise RuntimeError(f'Missing dependency on PATH: {tool}')
     parts = ROOT / 'cache' / 'nguonc' / f'nc-ep-{args.episode:03d}-parts'
-    existing = output_path(outdir, args.episode, args.skip_intro, logo, args.speed, args.layout, args.skip_outro, adjustments)
+    existing = output_path(outdir, args.episode, args.skip_intro, logo, args.speed, args.layout, args.skip_outro, adjustments, args.background)
     if existing.exists():
         report = read_json(existing.with_suffix('.report.json'))
-        if report.get('processing') != processing_profile(args.skip_intro, logo, args.speed, args.layout, args.skip_outro, adjustments):
+        if report.get('processing') != processing_profile(args.skip_intro, logo, args.speed, args.layout, args.skip_outro, adjustments, args.background):
             raise RuntimeError('Existing output has different processing settings; move it aside before rerunning.')
         print(f'Already exists: {existing}', flush=True)
         if report.get('missing_segments'):
@@ -561,7 +574,7 @@ def main():
                           'segments_to_download': len(selected), 'trimmed_segments_not_requested': len(excluded),
                           'skip_intro_seconds': args.skip_intro, 'skip_outro_seconds': args.skip_outro, 'skip_missing': not args.strict}), flush=True)
         download_segments(parts, metadata, args.workers, selected)
-    merge_episode(parts, outdir, args.episode, metadata, args.strict, args.skip_intro, logo, args.encoder, args.speed, args.layout, args.skip_outro, adjustments)
+    merge_episode(parts, outdir, args.episode, metadata, args.strict, args.skip_intro, logo, args.encoder, args.speed, args.layout, args.skip_outro, adjustments, args.background)
     if not args.no_cover:
         export_cover()
     finish()

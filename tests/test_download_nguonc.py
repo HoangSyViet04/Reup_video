@@ -251,6 +251,32 @@ class MergeIntegrationTests(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, 'metadata'):
             nguonc.segment_plan({'expected_segments': 4}, 0, 1)
 
+    def test_black_bars_are_black_from_first_frame_and_scene_is_present(self):
+        parts = self.make_parts('black-bars', [])
+        output, report = nguonc.merge_episode(parts, self.root / 'black-bars-out', 15, self.metadata,
+                                              layout='square', skip_intro=1.1, skip_outro=2.7, speed=1.15)
+        self.assertIn('-black-1x1.mp4', output.name)
+        self.assertEqual(report['processing']['background'], 'black')
+        for position in (0, 1, 3):
+            raw = subprocess.run(['ffmpeg', '-v', 'error', '-ss', str(position), '-i', str(output),
+                                  '-frames:v', '1', '-pix_fmt', 'rgb24', '-f', 'rawvideo', '-'],
+                                 check=True, capture_output=True).stdout
+            self.assertEqual(len(raw), 1080*1080*3)
+            self.assertLess(max(raw[:1080*100*3]), 5)
+            self.assertLess(max(raw[-1080*100*3:]), 5)
+            self.assertGreater(max(raw[1080*400*3:1080*600*3]), 200)
+
+    def test_blur_background_remains_available(self):
+        parts = self.make_parts('optional-blur', [])
+        output, report = nguonc.merge_episode(parts, self.root / 'optional-blur-out', 16, self.metadata,
+                                              layout='square', skip_intro=1.1, skip_outro=2.7,
+                                              background='blur')
+        self.assertEqual(report['processing']['background'], 'blur')
+        raw = subprocess.run(['ffmpeg', '-v', 'error', '-ss', '0.5', '-i', str(output),
+                              '-vf', 'crop=1080:100:0:0', '-frames:v', '1', '-pix_fmt', 'rgb24',
+                              '-f', 'rawvideo', '-'], check=True, capture_output=True).stdout
+        self.assertGreater(max(raw), 50)
+
     def test_invalid_speed(self):
         for speed in (0, -1, float('nan'), float('inf'), 3):
             with self.assertRaisesRegex(RuntimeError, 'Speed'):
