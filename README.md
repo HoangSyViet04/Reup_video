@@ -267,3 +267,11 @@ Chẩn đoán 2026-10-25: MP4 tập 18 hiện có giải mã 35 giây đầu kh�
 Chưa xác định nguyên nhân khi phát trên Facebook; không cam kết thay nền sẽ sửa lỗi phát.
 Nếu MP4 trên máy rõ nhưng Facebook mờ lúc mới phát, kiểm tra chất lượng phát và mạng,
 vì Facebook sử dụng nhiều mức chất lượng video và chọn theo điều kiện phát.
+
+
+## Tên miền nguồn (2026-11-01)
+
+Trang nguồn chuyển sang `https://tramphim.top`. Pipeline cập nhật đồng bộ URL API,
+Referer, referrer và frame_origins. Tên miền được khai báo tại `SITE_ORIGIN` trong
+`scripts/download_nguonc.py` để dễ cập nhật nếu nguồn tiếp tục chuyển địa chỉ.
+Nguồn video vẫn là NguonC / Lồng Tiếng #1; không đổi máy chủ dự phòng.

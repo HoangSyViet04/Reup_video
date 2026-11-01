@@ -21,6 +21,8 @@ from pathlib import Path
 from urllib.parse import urlencode, urljoin, urlsplit
 
 ROOT = Path(__file__).resolve().parents[1]
+SITE_ORIGIN = 'https://tramphim.top'
+SITE_REFERER = SITE_ORIGIN + '/'
 RUNTIME = ROOT / '.vendor'
 if RUNTIME.is_dir() and sys.prefix == sys.base_prefix:
     sys.path.insert(0, str(RUNTIME))
@@ -44,8 +46,8 @@ def fetch_episode(number):
               'vsmov_slug': 'dao-hai-tac', 'tmdb_id': '37854',
               'tmdb_type': 'tv', 'tmdb_season': '1'}
     result = subprocess.run(['curl.exe', '-f', '-sS', '-L', '--max-time', '45',
-                             '-A', 'Mozilla/5.0', '-e', 'https://tramphim.tech/',
-                             'https://tramphim.tech/api/backup-servers?' + urlencode(params)],
+                             '-A', 'Mozilla/5.0', '-e', SITE_REFERER,
+                             SITE_ORIGIN + '/api/backup-servers?' + urlencode(params)],
                             check=True, capture_output=True)
     channels = json.loads(result.stdout).get('nguoncEpisodes', [])
     dub = 'l\u1ed3ng ti\u1ebfng'
@@ -57,14 +59,14 @@ def fetch_episode(number):
     embed = episode['link_embed']
     origin = '{u.scheme}://{u.netloc}'.format(u=urlsplit(embed))
     session = requests.Session(impersonate='chrome131')
-    page = session.get(embed, headers={'Referer': 'https://tramphim.tech/'}, timeout=25)
+    page = session.get(embed, headers={'Referer': SITE_REFERER}, timeout=25)
     page.raise_for_status()
     found = re.search(r'<script id="stream-bootstrap"[^>]*>(.*?)</script>', page.text, re.S)
     if not found or json.loads(found.group(1)).get('api') != embed:
         raise RuntimeError('Public player bootstrap unavailable or unexpected.')
     response = session.post(embed, headers={'Referer': embed, 'Origin': origin}, timeout=25,
-                            json={'action': 'bootstrap', 'referrer': 'https://tramphim.tech/',
-                                  'frame_origins': ['https://tramphim.tech'], 'request_grant': True,
+                            json={'action': 'bootstrap', 'referrer': SITE_REFERER,
+                                  'frame_origins': [SITE_ORIGIN], 'request_grant': True,
                                   'playlist_format': 'hls', 'pretty_url': True, 'path_chunks': True,
                                   'bootstrap_format': 'json'})
     response.raise_for_status()
