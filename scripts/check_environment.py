@@ -10,6 +10,11 @@ from pathlib import Path
 def main():
     root = Path(__file__).resolve().parents[1]
     errors = []
+    try:
+        from download_nguonc import load_site_origin
+        print(f'Source configured: {load_site_origin()}')
+    except RuntimeError as error:
+        errors.append(str(error))
     print(f'Python: {platform.python_version()} ({platform.machine()})')
     if sys.version_info < (3, 10):
         errors.append('Python 3.10+ is required.')

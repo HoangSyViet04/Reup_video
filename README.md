@@ -12,6 +12,24 @@ tests/            Kiểm tra offline bằng video giả lập
 archive/          Code, tài liệu và cấu trúc cũ
 ```
 
+## Đổi tên miền nguồn — chỉ sửa một chỗ
+
+Mở **`config.json`** ngay cạnh `run_download.cmd`, sửa giá trị `site_url`:
+
+```json
+{
+  "site_url": "https://tramphim.app"
+}
+```
+
+Lưu file rồi chạy pipeline như cũ. Không cần sửa code hay cài lại thư viện.
+Khi trang đổi địa chỉ, thay đúng tên miền mới tại đây, giữ `https://` và không dán
+đường dẫn `/xem/...` hoặc `/api/...`. Có hoặc không có dấu `/` cuối đều được.
+Pipeline dùng cùng giá trị này cho URL API, Referer, referrer và frame_origins.
+File cấu hình được tìm theo vị trí project, kể cả khi gọi launcher từ thư mục khác.
+Thiếu file/JSON sai/URL sai sẽ báo rõ lỗi trước khi truy cập mạng.
+Các lệnh chỉ xử lý cache hoặc tạo bìa không cần truy cập website.
+
 ## Dùng trên máy Windows khác
 
 Không cần giữ đường dẫn `D:\Project\Reup_video`. Code và launcher tìm thư mục theo
@@ -272,6 +290,5 @@ vì Facebook sử dụng nhiều mức chất lượng video và chọn theo đi
 ## Tên miền nguồn (2026-11-01)
 
 Trang nguồn chuyển sang `https://tramphim.top`. Pipeline cập nhật đồng bộ URL API,
-Referer, referrer và frame_origins. Tên miền được khai báo tại `SITE_ORIGIN` trong
-`scripts/download_nguonc.py` để dễ cập nhật nếu nguồn tiếp tục chuyển địa chỉ.
+Referer, referrer và frame_origins. Tên miền hiện được đọc từ `config.json` ở thư mục gốc project; không cần sửa code.
 Nguồn video vẫn là NguonC / Lồng Tiếng #1; không đổi máy chủ dự phòng.

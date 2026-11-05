@@ -21,8 +21,6 @@ from pathlib import Path
 from urllib.parse import urlencode, urljoin, urlsplit
 
 ROOT = Path(__file__).resolve().parents[1]
-SITE_ORIGIN = 'https://tramphim.top'
-SITE_REFERER = SITE_ORIGIN + '/'
 RUNTIME = ROOT / '.vendor'
 if RUNTIME.is_dir() and sys.prefix == sys.base_prefix:
     sys.path.insert(0, str(RUNTIME))
@@ -36,7 +34,34 @@ def write_json(path, data):
     path.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding='utf-8')
 
 
+def load_site_origin(config_path=None):
+    """Read the user's single domain setting relative to the project, not the shell cwd."""
+    config_path = Path(config_path) if config_path is not None else ROOT / 'config.json'
+    try:
+        config = json.loads(config_path.read_text(encoding='utf-8-sig'))
+    except (OSError, ValueError) as error:
+        raise RuntimeError(f'Cannot read source config {config_path}: {error}') from error
+    site_url = config.get('site_url') if isinstance(config, dict) else None
+    if not isinstance(site_url, str):
+        raise RuntimeError(f'Config {config_path} must contain a string field "site_url".')
+    site_url = site_url.strip()
+    try:
+        parsed = urlsplit(site_url)
+        parsed.port  # Validate malformed ports before sending a request.
+        valid = (parsed.scheme == 'https' and parsed.hostname and not parsed.username
+                 and not parsed.password and parsed.path in ('', '/')
+                 and not parsed.query and not parsed.fragment
+                 and not re.search(r'\s', site_url))
+    except ValueError:
+        valid = False
+    if not valid:
+        raise RuntimeError(f'Invalid site_url in {config_path}; use an HTTPS origin such as https://tramphim.app, without a video path.')
+    return f'https://{parsed.netloc}'
+
+
 def fetch_episode(number):
+    site_origin = load_site_origin()
+    site_referer = site_origin + '/'
     try:
         from curl_cffi import requests
     except ImportError as error:
@@ -46,8 +71,8 @@ def fetch_episode(number):
               'vsmov_slug': 'dao-hai-tac', 'tmdb_id': '37854',
               'tmdb_type': 'tv', 'tmdb_season': '1'}
     result = subprocess.run(['curl.exe', '-f', '-sS', '-L', '--max-time', '45',
-                             '-A', 'Mozilla/5.0', '-e', SITE_REFERER,
-                             SITE_ORIGIN + '/api/backup-servers?' + urlencode(params)],
+                             '-A', 'Mozilla/5.0', '-e', site_referer,
+                             site_origin + '/api/backup-servers?' + urlencode(params)],
                             check=True, capture_output=True)
     channels = json.loads(result.stdout).get('nguoncEpisodes', [])
     dub = 'l\u1ed3ng ti\u1ebfng'
@@ -59,14 +84,14 @@ def fetch_episode(number):
     embed = episode['link_embed']
     origin = '{u.scheme}://{u.netloc}'.format(u=urlsplit(embed))
     session = requests.Session(impersonate='chrome131')
-    page = session.get(embed, headers={'Referer': SITE_REFERER}, timeout=25)
+    page = session.get(embed, headers={'Referer': site_referer}, timeout=25)
     page.raise_for_status()
     found = re.search(r'<script id="stream-bootstrap"[^>]*>(.*?)</script>', page.text, re.S)
     if not found or json.loads(found.group(1)).get('api') != embed:
         raise RuntimeError('Public player bootstrap unavailable or unexpected.')
     response = session.post(embed, headers={'Referer': embed, 'Origin': origin}, timeout=25,
-                            json={'action': 'bootstrap', 'referrer': SITE_REFERER,
-                                  'frame_origins': [SITE_ORIGIN], 'request_grant': True,
+                            json={'action': 'bootstrap', 'referrer': site_referer,
+                                  'frame_origins': [site_origin], 'request_grant': True,
                                   'playlist_format': 'hls', 'pretty_url': True, 'path_chunks': True,
                                   'bootstrap_format': 'json'})
     response.raise_for_status()
